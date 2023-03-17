@@ -5,6 +5,8 @@ const app = express();
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
 const urlParser = bodyParser.urlencoded({ extended: true });
+const dns = require("dns");
+const { log } = require("console");
 
 // Basic Configuration
 const port = process.env.PORT || 3000;
@@ -74,28 +76,57 @@ app.get("/api/hello", function (req, res) {
   res.json({ greeting: "hello API" });
 });
 
-app.post("/api/shorturl", urlParser, function (req, res) {
-  shortLinks.countDocuments(null, (err, data) => {
-    if (err) {
-      console.log(err);
-    } else {
-      let shortened = data + 1;
+app.get("/api/shorturl", function (req, res) {
+  res.json({ really: "what were you expecting?" });
+});
 
-      let link = new shortLinks({
-        original_url: req.body.url,
-        short_url: shortened,
+app.post("/api/shorturl", urlParser, async function (req, res) {
+  if (!req.body || req.body.url.split("/")[2] == undefined)
+    res.json({ error: "invalid URL" });
+  dns.lookup(req.body.url.split("/")[2], (err, add, fam) => {
+    // console.log(err);
+
+    if (err) {
+      res.json({ error: "invalid URL" });
+    } else {
+      shortLinks.countDocuments(null, (err, data) => {
+        if (err) {
+          console.log(err);
+        } else {
+          let shortened = data + 1;
+
+          let link = new shortLinks({
+            original_url: req.body.url,
+            short_url: shortened,
+          });
+          link.save((err) => {
+            if (err) {
+              shortLinks.findOne(
+                { original_url: req.body.url },
+                (err, data) => {
+                  res.json(data);
+                }
+              );
+            } else {
+              res.json(link);
+            }
+          });
+        }
       });
-      link.save((err) => {
-        err ? console.log(err) : null;
-      });
-      res.json(link);
     }
   });
   // console.log(req.body);
   // res.json(req.body.url);
 });
 
-app.get("/api/shorturl/:linkId", function (req, res) {});
+app.get("/api/shorturl/:linkId", async function (req, res) {
+  const id = req.params.linkId;
+  shortLinks.findOne({ short_url: id }, (err, data) => {
+    data
+      ? res.redirect(data.original_url)
+      : res.json({ error: "No short URL found for the given input" });
+  });
+});
 
 app.listen(port, function () {
   console.log(`Listening on port ${port}`);
